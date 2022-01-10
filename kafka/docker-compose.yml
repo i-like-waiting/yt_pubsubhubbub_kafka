@@ -1,0 +1,137 @@
+---
+version: '3.3'
+
+services:
+  zookeeper:
+    image: wurstmeister/zookeeper
+    container_name: zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_DATADIR: /tmp/zookeeper-data/
+    volumes:
+      - /home/enjoy/kafka/kafka/zookeeper.properties:/conf/zoo.cfg
+      - /home/enjoy/kafka/zookeeper-data/:/tmp/zookeeper-data/
+
+  broker:
+    image: wurstmeister/kafka
+    container_name: broker
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_ADVERTISED_HOST_NAME: 192.168.0.11
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LOG_DIRS: /tmp/logs/
+    volumes:
+      - /home/enjoy/kafka/kafka-logs:/tmp/logs/
+
+#  ksqldb-server:
+#    image: confluentinc/ksqldb-server:0.19.0
+#    hostname: ksqldb-server
+#    container_name: ksqldb-server
+#    depends_on:
+#      - broker
+#    links:
+#      - broker
+#    ports:
+#      - "8088:8088"
+#    environment:
+#      KSQL_LISTENERS: http://localhost:8088
+#      KSQL_BOOTSTRAP_SERVERS: http://localhost:9092
+#      KSQL_KSQL_LOGGING_PROCESSING_STREAM_AUTO_CREATE: "true"
+#      KSQL_KSQL_LOGGING_PROCESSING_TOPIC_AUTO_CREATE: "true"
+
+#  ksqldb-cli:
+#    image: confluentinc/ksqldb-cli:0.19.0
+#    container_name: ksqldb-cli
+#    depends_on:
+#      - broker
+#      - ksqldb-server
+#    entrypoint: /bin/sh
+#    tty: true
+
+  schema-registry:
+    image: confluentinc/cp-schema-registry:6.2.0
+    container_name: schema-registry
+    depends_on:
+      - broker
+    links:
+      - broker
+      - zookeeper
+    ports:
+      - "8091:8091"
+    environment:
+      SCHEMA_REGISTRY_KAFKASTORE_CONNECTION_URL: zookeeper:2181
+      SCHEMA_REGISTRY_HOST_NAME: http://localhost
+      SCHEMA_REGISTRY_LISTENERS: http://localhost:8091
+
+
+  connect:
+    image: confluentinc/cp-kafka-connect:latest
+    container_name: connect
+    depends_on:
+      - broker
+    links:
+      - broker
+    ports:
+      - 8083:8083
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: broker:9092
+      CONNECT_REST_ADVERTISED_HOST_NAME: target-connect
+      CONNECT_GROUP_ID: connect
+      CONNECT_KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE: 'true'
+      CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: 'true'
+      CONNECT_CONFIG_STORAGE_TOPIC: connect_config
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_OFFSET_STORAGE_TOPIC: connect_offset
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_STATUS_STORAGE_TOPIC: connect_status
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_PLUGIN_PATH: /tmp/kafka/plugins/
+      CONNECT_INTERNAL_KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_INTERNAL_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_INTERNAL_KEY_CONVERTER_SCHEMAS_ENABLE: 'true'
+      CONNECT_INTERNAL_VALUE_CONVERTER_SCHEMAS_ENABLE: 'true'
+      CONNECT_LOG4J_LOGGERS: 'org.reflections=ERROR'
+      CONNECT_CONFIG_PROVIDERS: file
+      CONNECT_CONFIG_PROVIDERS_FILE_CLASS: org.apache.kafka.common.config.provider.FileConfigProvider
+    volumes:
+      - /home/enjoy/kafka/plugins:/tmp/kafka/plugins/
+      - /home/enjoy/kafka/tmp:/tmp/kafka/offset/
+      - /home/enjoy/kafka/secrets:/secrets
+
+  akhq:
+    # build:
+    #   context: .
+    image: tchiotludo/akhq
+    container_name: akhq
+    environment:
+      AKHQ_CONFIGURATION: |
+        akhq:
+          connections:
+            docker-kafka-server:
+              properties:
+                bootstrap.servers: "broker:9092"
+              schema-registry:
+                url: "http://schema-registry:8091"
+              connect:
+                - name: "connect"
+                  url: "http://connect:8083"
+    ports:
+      - 127.0.0.1:8096:8080
+    links:
+      - broker
+      - schema-registry
+      - connect
+#    links:
+#      - kafka
+#      - schema-registry
+#networks:
+#  default:
+#    driver: overlay
+#    attachable: true
+#    ipam:
+#      config:
+#      - subnet: 172.33.0.0/16

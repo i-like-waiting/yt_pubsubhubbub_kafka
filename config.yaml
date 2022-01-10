@@ -1,0 +1,5 @@
+webhook_url: http://7e9f-81-100-231-74.ngrok.io
+
+channel_ids: [UCqK_GSMbpiV8spgD3ZGloSw]
+
+message_prefix: A new video has just gone live!
